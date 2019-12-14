@@ -10,20 +10,28 @@ THRESHOLD = 0.1
 EPSILON = 0.000001
 
 
-def load_dataset(file_name):
+def load_dataset(file_name, t):
     """
     loads dataset and returns it
     :param file_name:
+    :param t: type of processing on dataset (s: standard, l: log, b: binary)
     :return:
     """
     file_location = path.join(path.abspath(path.dirname(__file__)), '../data', file_name)
-    return np.loadtxt(file_location, dtype=np.float128)
+    dataset = np.loadtxt(file_location, dtype=np.float128)
+
+    if t == 's':
+        return standardize_dataset(dataset)
+    elif t == 'l':
+        return logplus_dataset(dataset)
+    elif t == 'b':
+        return binarize_dataset(dataset)
 
 
 def standardize_dataset(dataset):
     """
     standardizes a dataset
-    :param x:
+    :param dataset:
     :return:
     """
     x = dataset[:, :-1]
@@ -34,7 +42,7 @@ def standardize_dataset(dataset):
 def logplus_dataset(dataset):
     """
     computes log(a + 0.1) on all elements of input
-    :param x:
+    :param dataset:
     :return:
     """
     x = dataset[:, :-1]
@@ -42,10 +50,10 @@ def logplus_dataset(dataset):
     return dataset
 
 
-def binarize_dataset(x):
+def binarize_dataset(dataset):
     """
     if a > 0 => that element will become 1 else => 0
-    :param x:
+    :param dataset:
     :return:
     """
     x = dataset[:, :-1]
@@ -54,6 +62,18 @@ def binarize_dataset(x):
     binary_x[binary_x <= 0] = 0
     dataset[:, :-1] = binary_x
     return dataset
+
+
+def generate_training_test_datasets(dataset):
+    """
+    splites data to training and test datasets
+    :param dataset:
+    :return: training, test
+    """
+    np.random.shuffle(dataset)
+    split_boundary = math.floor(80 * dataset.shape[0] / 100)
+    training_dataset, test_dataset = dataset[:split_boundary], dataset[split_boundary:]
+    return training_dataset, test_dataset
 
 
 def h(x, beta):
@@ -106,13 +126,20 @@ def cost(x, y, beta):
     return (s1 + s2)[0, 0]
 
 
-def gradient_descent(x, y):
+def gradient_descent(training_dataset):
     """
     computes beta using gradient descent algorithm and computes list of costs
-    :param x: i*j
-    :param y: i*1
+    :param training_dataset:
     :return: tuple containing beta (j*1 vector), costs list (list of costs in each iteration)
     """
+
+    # attach a column of 1s to the beginning of x
+    x = training_dataset[:, :-1]
+    x = np.hstack((np.matrix(np.ones(x.shape[0])).T, x))
+
+    # save targets in separate variables
+    y = training_dataset[:, -1].reshape((x.shape[0], 1))
+
     beta = np.zeros((x.shape[1], 1))
 
     costs_list = []
@@ -135,26 +162,62 @@ def draw_costs_plot(costs_list):
     plt.show()
 
 
-dataset = load_dataset('spam.data')
-split_boundary = math.floor(80 * dataset.shape[0] / 100)
+def h_single(x, beta, threshold=0.5):
+    """
+    hypothesis function ran on single row
+    :param x: a row of features (j * 1 vector)
+    :param beta: j*1 vector
+    :param threshold:
+    :return: single value predicted for y
+    """
+    p = 1 / 1 + np.exp(1 / (1 + np.exp(-x.dot(beta))))[0, 0]
 
-# apply a function on dataset feature elements (uncomment any one you want)
-dataset = standardize_dataset(dataset)
-# dataset = logplus_dataset(dataset)
-# dataset = binarize_dataset(dataset)
+    if p > threshold:
+        return 1
+    else:
+        return 0
 
-# np.random.shuffle(dataset)
-training_dataset, test_dataset = dataset[:split_boundary], dataset[split_boundary:]
 
-# attach a column of 1s to the beginning of x
-x = dataset[:, :-1]
-x = np.hstack((np.matrix(np.ones(x.shape[0])).T, x))
+def compute_error_rate(test_dataset, beta):
+    """
+    computes error rate of model with specified beta using test dataset
+    :param test_dataset:
+    :param beta:
+    :return:
+    """
+    errors_count = 0
+    for row in test_dataset:
+        real_y = row[-1]
+        x = np.insert(row[:-1], 0, 1)
+        predicted_value = h_single(x, beta)
 
-# save targets in separate variables
-y = dataset[:, -1].reshape((x.shape[0], 1))
+        if predicted_value != real_y:
+            errors_count += 1
 
-# get model information
-beta, costs_list = gradient_descent(x, y)
+    return errors_count / len(test_dataset)
 
-# draw cost plot
-draw_costs_plot(costs_list)
+
+def start():
+    """
+    starting point of program
+    :return: None
+    """
+    processing_type = input('Please Enter Processing Type (s: standard, l: log, b: binary) > ')
+
+    dataset = load_dataset('spam.data', processing_type)
+
+    training_dataset, test_dataset = generate_training_test_datasets(dataset)
+
+    # get model information
+    beta, costs_list = gradient_descent(training_dataset)
+
+    # draw cost plot
+    draw_costs_plot(costs_list)
+
+    # compute error rate
+    error_rate = compute_error_rate(test_dataset, beta)
+    print('Error Rate is: {0}'.format(error_rate))
+
+
+if __name__ == '__main__':
+    start()
